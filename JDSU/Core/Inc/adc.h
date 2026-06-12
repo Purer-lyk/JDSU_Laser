@@ -19,7 +19,7 @@
 #define ADC_LOOP_FRAME			(0x2 << 12)
 
 #define STABLECOUNT					1
-#define STABLERANGE					18
+#define STABLERANGE					4
 #define WINDOW_SIZE 				25
 #define QUEUE_SIZE 				  400
 

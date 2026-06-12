@@ -182,6 +182,9 @@ void write_ms5614t_table(void){
 						PI11210_SetCode(IDAC4, IDACData[3]); // WAVEA
 						PI11210_SetCode(IDAC7, IDACData[4]); // WAVEB
 				}
+				
+//				sampleVoltage();
+				
 				sampleVoltageStable(i);// todo:increase sample time via unstableFlag
 				
 //				M1820Z_GetTmp();
@@ -275,28 +278,28 @@ void getFilterDiff(void){
 		for(uint8_t i=0;i<diffs1;i++){
 				dhigh = aRxBuffer[getDiffIdx++];
 				dlow = aRxBuffer[getDiffIdx++];
-				unstableFlags[(dhigh<<8)+dlow][0] += 1;
+				if(unstableFlags[(dhigh<<8)+dlow][0]<60)unstableFlags[(dhigh<<8)+dlow][0] += 1;
 		}
 		
 		uint8_t diffs2 = aRxBuffer[getDiffIdx++];
 		for(uint8_t i=0;i<diffs2;i++){
 				dhigh = aRxBuffer[getDiffIdx++];
 				dlow = aRxBuffer[getDiffIdx++];
-				unstableFlags[(dhigh<<8)+dlow][1] += 1;
+				if(unstableFlags[(dhigh<<8)+dlow][1]<60)unstableFlags[(dhigh<<8)+dlow][1] += 1;
 		}
 		
 		uint8_t diffs3 = aRxBuffer[getDiffIdx++];
 		for(uint8_t i=0;i<diffs3;i++){
 				dhigh = aRxBuffer[getDiffIdx++];
 				dlow = aRxBuffer[getDiffIdx++];
-				unstableFlags[(dhigh<<8)+dlow][2] += 1;
+				if(unstableFlags[(dhigh<<8)+dlow][2]<60)unstableFlags[(dhigh<<8)+dlow][2] += 1;
 		}
 		
 		uint8_t diffs4 = aRxBuffer[getDiffIdx++];
 		for(uint8_t i=0;i<diffs4;i++){
 				dhigh = aRxBuffer[getDiffIdx++];
 				dlow = aRxBuffer[getDiffIdx++];
-				unstableFlags[(dhigh<<8)+dlow][3] += 1;
+				if(unstableFlags[(dhigh<<8)+dlow][3]<60)unstableFlags[(dhigh<<8)+dlow][3] += 1;
 		}
 }
 
@@ -312,15 +315,17 @@ void sampleVoltage(void){
 }
 
 void sampleVoltageStable(uint16_t i){
-		delay_us(wave_time);
+//		delay_us(wave_time);
 		uint8_t adc_idx=0;
 		uint8_t unstable_flag = 0;
 		for(;adc_idx<4;adc_idx++){
-				unstable_flag = 0;
+//				unstable_flag = 0;
 			
-				if(unstableFlags[i][adc_idx] >= 0) adcData = ADC_Write_Read_Stable(adc_idx, &unstable_flag, unstableFlags[i][adc_idx]+1) & 0x0FFF;
-				else adcData = ADC_Write_Read(adc_idx) & 0x0FFF;
-//				adcData = ADC_Write_Read(adc_idx) & 0x0FFF;
+//				if(unstableFlags[i][adc_idx] >= 0) adcData = ADC_Write_Read_Stable(adc_idx, &unstable_flag, unstableFlags[i][adc_idx]+1) & 0x0FFF;
+//				else adcData = ADC_Write_Read(adc_idx) & 0x0FFF;
+			
+				delay_us(wave_time*unstableFlags[i][adc_idx]*50);
+				adcData = ADC_Write_Read(adc_idx) & 0x0FFF;
 			
 				uADCOriginvalues[adc_idx] = adcData;
 			
@@ -328,12 +333,12 @@ void sampleVoltageStable(uint16_t i){
 				txBuffer[txCount++] = adcData & 0xFF;
 				txBuffer[txCount++] = unstable_flag;
 			
-				if(unstable_flag){
-					if(unstableFlags[i][adc_idx]<127)unstableFlags[i][adc_idx] += 1;
-				}
-				else{
-					if(unstableFlags[i][adc_idx]>-1)unstableFlags[i][adc_idx] -= 1;
-				}
+//				if(unstable_flag){
+//					if(unstableFlags[i][adc_idx]<127)unstableFlags[i][adc_idx] += 1;
+//				}
+//				else{
+//					if(unstableFlags[i][adc_idx]>-1)unstableFlags[i][adc_idx] -= 1;
+//				}
 		}
 }
 

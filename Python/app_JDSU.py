@@ -28,7 +28,7 @@ from collections import deque
 from queue import Queue
 from queue import Empty
 
-from scipy.signal import medfilt, savgol_filter
+from scipy.signal import medfilt, savgol_filter, butter, filtfilt
 from pyvisa.constants import InterfaceType
 
 #测试
@@ -264,26 +264,34 @@ class peakWorker(QThread):
     def run(self):
         pack_size = 4+2500*12+2+60*4+5+4 # 帧长度是变长的，但是接收的时候按定长为标准，接收不定长的帧
         def process_buffer(buf):
+            pos = 0
             while self.running:
-                idx = buf.find(b'\xee\xee')
+                idx = buf.find(b'\xee\xee', pos)
                 if idx<0:
-                    if len(buf) > 1:
-                        del buf[:-1]
-                        break
-                elif idx>0:
-                    # print(buf)
-                    del buf[:idx]
+                    # if len(buf) > 1:
+                    #     del buf[:-1]
+                    break
+                # elif idx>0:
+                #     # print(buf)
+                #     del buf[:idx]
                 
-                end_idx = buf.find(b'\xff\xef')
+                end_idx = buf.find(b'\xff\xef', idx+2)
+                
                 if end_idx<0:
                     break
 
-                frame = buf[idx:end_idx+2]
+                # frame = buf[idx:end_idx+2]
                 # print(frame)
 
-                if frame[-2:] == b'\xff\xef':
-                    frames_queue.append(frame)
-                    del buf[:end_idx+2]
+                # if frame[-2:] == b'\xff\xef':
+                #     frames_queue.append(frame)
+                #     del buf[:end_idx+2]
+                frames_queue.append(buf[idx:end_idx+2])
+
+                pos = end_idx+2
+
+            if pos:
+                del buf[:pos]
 
         def process_temperature(buf):
             while self.running:
@@ -832,7 +840,7 @@ class GraphWindow(QtWidgets.QWidget):
         self.temperature = 0
 
         diff_threshold_label = QtWidgets.QLabel("滤波差异阈值:")
-        self.diff_threshold_text = QtWidgets.QLineEdit("0.1")
+        self.diff_threshold_text = QtWidgets.QLineEdit("0.2")
         self.diff_threshold_text.setMinimumWidth(100)
         self.diff_threshold_text.setMaximumHeight(25)
         self.diff_threshold_text.textChanged.connect(self.on_threshold_changed)
@@ -1523,7 +1531,14 @@ class GraphWindow(QtWidgets.QWidget):
             end = initials[i]+self.peak_interval if initials[i]+self.peak_interval<adc_length else adc_length
             sumy=0
             sumxy=0
+
+            peak_max = max(data_vec[start:end])
+            threshold = peak_max * 0.5
+
             for j in range(start, end):
+                if data_vec[j] < threshold:
+                    continue
+
                 sumxy+=data_vec[j]*self.wave_const[j]
                 sumy+=data_vec[j]
             peaks_vec[i] = sumxy/sumy
@@ -1540,8 +1555,10 @@ class GraphWindow(QtWidgets.QWidget):
 
         #--------------------------#
         # 滤波
-        y = medfilt(arr, kernel_size=9)
-        y = savgol_filter(y, window_length=5, polyorder=2)
+        y = medfilt(arr, kernel_size=5)
+        # b,a = butter(4,0.08)
+        # y = filtfilt(b,a,arr)
+        y = savgol_filter(y, window_length=11, polyorder=3)
         y = np.array(y)
 
         # 不滤波
@@ -1573,6 +1590,7 @@ class GraphWindow(QtWidgets.QWidget):
             item.setData([], [])
         if checked:
             self.update_plot()
+        
 
 class ap6150bWindow(QtWidgets.QWidget):
     def __init__(self):
@@ -1716,6 +1734,7 @@ class ap6150bWindow(QtWidgets.QWidget):
     def set_dac_label(self, dac_type):
         label = "U_DAC" if dac_type == 0 else "I_DAC"
         self.dac_label.setText(f"DAC: {label}")
+
 
 class extraWindow(QtWidgets.QWidget):
     temp_signal = pyqtSignal(float)
@@ -2184,6 +2203,31 @@ class extraWindow(QtWidgets.QWidget):
             ser_open = False
         except Exception as e:
             self.error_signal.emit(str(e))
+
+
+class KalmanFilter1D:
+    def __init__(self, Q=1e-5, R=0.1**2):
+        # Q: 过程噪声（模型不确定性）
+        # R: 测量噪声（传感器噪声）
+        self.Q = Q
+        self.R = R
+
+        self.x = 0.0   # 状态估计
+        self.P = 1.0   # 估计误差协方差
+
+    def update(self, z):
+        # 1. 预测
+        x_pred = self.x
+        P_pred = self.P + self.Q
+
+        # 2. 卡尔曼增益
+        K = P_pred / (P_pred + self.R)
+
+        # 3. 更新
+        self.x = x_pred + K * (z - x_pred)
+        self.P = (1 - K) * P_pred
+
+        return self.x
 
 if __name__=="__main__":
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
