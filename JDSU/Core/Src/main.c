@@ -124,7 +124,7 @@ int main(void)
 	aTxBuffer[1] = 0xFF;
 	HAL_UART_Receive_DMA(&huart1, uartFrame, USART_RX_SIZE);
 	
-	Set_Soft_PWM_Duty(0);
+	Set_Soft_PWM_Duty(25);
 	__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
 	HAL_DMA_Start(&hdma_tim1_up, (uint32_t)pwm_buffer, (uint32_t)&(GPIOC->BSRR), ARR_1);
 	HAL_TIM_Base_Start(&htim1);

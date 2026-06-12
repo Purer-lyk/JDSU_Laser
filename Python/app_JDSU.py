@@ -837,9 +837,8 @@ class GraphWindow(QtWidgets.QWidget):
         self.diff_threshold_text.setMaximumHeight(25)
         self.diff_threshold_text.textChanged.connect(self.on_threshold_changed)
 
-        scalar_label = QtWidgets.QLabel("Y轴缩放:")
+        scalar_label = QtWidgets.QLabel("电压缩放:")
         self.voltage_scalars = [1.0, 1.0, 1.0, 1.0]
-
         self.scalar_channel_combo = QtWidgets.QComboBox()
         self.scalar_channel_combo.addItems([f"CH{i}" for i in range(4)])
         self.scalar_channel_combo.setMinimumWidth(70)
@@ -1471,7 +1470,8 @@ class GraphWindow(QtWidgets.QWidget):
         visible = (state == QtCore.Qt.Checked)
         self.visible_lines[i] = visible
 
-    def find_initial(self, data_vec, initials, adc_length, adc_index):
+    def find_initial(self, data_vec, adc_length, adc_index):
+        initials = [0]*self.initials_length
         ma = max(data_vec)
         mi = min(data_vec)
         gap = ma-mi
@@ -1483,7 +1483,9 @@ class GraphWindow(QtWidgets.QWidget):
             # print(f"{adc_index}:", mean/(adc_length*gap))
             return initials
         it = 0
-        for i in range(1,adc_length-2):
+        i = 1
+        # for i in range(1,adc_length-2):
+        while i<(adc_length-2):
             if it>=self.initials_length: break
             start = i-self.peak_interval if i-self.peak_interval>=0 else 0
             end = i+self.peak_interval if i+self.peak_interval<adc_length else adc_length
@@ -1502,15 +1504,17 @@ class GraphWindow(QtWidgets.QWidget):
                 initials[it] = i
                 i+=self.peak_interval
                 it+=1
+            i+=1
         # print(initials)
         return initials
 
     def find_peaks(self, data_vec, adc_index):
-        initials = [0]*self.initials_length
+        # initials = [0]*self.initials_length
         peaks_vec = [0]*self.initials_length
         adc_length = array_size
 
-        initials = self.find_initial(data_vec, initials, adc_length, adc_index)
+        initials = self.find_initial(data_vec, adc_length, adc_index)
+        # print(initials)
         
         for i in range(self.initials_length):
             if initials[i]==0:
@@ -1532,10 +1536,17 @@ class GraphWindow(QtWidgets.QWidget):
         if len(adc_vec) == 0:
             return np.array([])
 
-        arr = np.asarray(adc_vec, dtype=float)
+        arr = np.asarray(adc_vec, dtype=float)*self.voltage_scalars[channel]
+
+        #--------------------------#
+        # 滤波
         y = medfilt(arr, kernel_size=9)
         y = savgol_filter(y, window_length=5, polyorder=2)
-        y = np.array(y) * self.voltage_scalars[channel]
+        y = np.array(y)
+
+        # 不滤波
+        # y = np.array(adc_vec) * self.voltage_scalars[channel]
+        #--------------------------#
 
         if self.show_points:
             self.filter_visual(channel, arr, y)
