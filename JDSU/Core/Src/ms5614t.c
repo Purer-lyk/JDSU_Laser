@@ -1,5 +1,6 @@
 /* AI/ms5614t.c */
 #include "main.h"
+#include "usbd_cdc_if.h"
 
 #define DAC_DELAY 3
 #define TRANSITION_STEPS 6
@@ -18,6 +19,9 @@ int8_t unstableFlags[Number][4] = {0};
 float tempData = 0;
 uint16_t tempInt = 0;
 uint16_t tempDec = 0;
+
+uint16_t start_wave = 0;
+uint16_t end_wave = 0;
 
 HAL_StatusTypeDef dacRet = HAL_TIMEOUT;
 HAL_StatusTypeDef dacrRet = HAL_TIMEOUT;
@@ -194,7 +198,7 @@ void write_ms5614t_table(void){
 				adc3[i] = uADCOriginvalues[2];
 				adc4[i] = uADCOriginvalues[3];
 				
-				delay_us(1);
+				//delay_us(1);
 		}
 }
 
@@ -265,6 +269,9 @@ void modify_table_loop(void){
 		else if(aRxBuffer[3] == 0x04){
 				getFilterDiff();
 		}
+		else if(aRxBuffer[3] == 0x05){
+				getWaveRange();
+		}
 		ClearRxBuff();
 		ReceEndFlag = 0;
 }
@@ -303,6 +310,19 @@ void getFilterDiff(void){
 		}
 }
 
+void getWaveRange(void){
+		uint16_t getResIdx = 4;
+		
+		int l_high = aRxBuffer[getResIdx++];
+		int l_low = aRxBuffer[getResIdx++];
+	
+		int r_high = aRxBuffer[getResIdx++];
+		int r_low = aRxBuffer[getResIdx++];
+	
+		start_wave = (l_high<<8)+l_low;
+		end_wave = (r_high<<8)+r_low;
+}
+
 void sampleVoltage(void){
 		delay_us(wave_time);
 		for(uint8_t adc_idx=0;adc_idx<4;adc_idx++){
@@ -315,9 +335,9 @@ void sampleVoltage(void){
 }
 
 void sampleVoltageStable(uint16_t i){
-//		delay_us(wave_time);
+		delay_us(wave_time);
 		uint8_t adc_idx=0;
-		uint8_t unstable_flag = 0;
+		//uint8_t unstable_flag = 0;
 		for(;adc_idx<4;adc_idx++){
 //				unstable_flag = 0;
 			
@@ -331,7 +351,7 @@ void sampleVoltageStable(uint16_t i){
 			
 				txBuffer[txCount++] = (adcData >> 8) & 0xFF;
 				txBuffer[txCount++] = adcData & 0xFF;
-				txBuffer[txCount++] = unstable_flag;
+				//txBuffer[txCount++] = unstable_flag;
 			
 //				if(unstable_flag){
 //					if(unstableFlags[i][adc_idx]<127)unstableFlags[i][adc_idx] += 1;
@@ -354,7 +374,7 @@ void sampleTemperature(void){
 }
 
 void sendTxBuffer(int dac_size, int p1, int p2, int p3, int p4){
-		int floating_size = 4+12*dac_size+3+4+4*(p1+p2+p3+p4)+4;
+		int floating_size = 4+8*dac_size+3+4+4*(p1+p2+p3+p4)+4;
 	
 		txBuffer[txCount++] = 0xFF;
 		txBuffer[txCount++] = 0xEF;
@@ -534,6 +554,7 @@ void singleValue_I(void){
 				}			
 		}
 		USART_Queue_Send(aTxBuffer, USART_TX_SIZE);
+		
 		ClearRxBuff();
 		ClearTxBuff();
 }

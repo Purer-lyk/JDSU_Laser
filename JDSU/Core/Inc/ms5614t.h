@@ -91,6 +91,9 @@ extern float tempData;
 extern uint16_t tempInt;
 extern uint16_t tempDec;
 
+extern uint16_t start_wave;
+extern uint16_t end_wave;
+
 extern HAL_StatusTypeDef dacRet;
 
 /* ?1? DAC */
@@ -113,6 +116,7 @@ void sampleVoltageStable(uint16_t i);
 void sampleTemperature(void);
 void sendTxBuffer(int dac_size, int p1, int p2, int p3, int p4);
 void getFilterDiff(void);
+void getWaveRange(void);
 
 void write_ms5614t_manual(void);
 void ClearTxBuff(void);

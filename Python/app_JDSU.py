@@ -28,7 +28,7 @@ from collections import deque
 from queue import Queue
 from queue import Empty
 
-from scipy.signal import medfilt, savgol_filter, butter, filtfilt
+from scipy.signal import medfilt, savgol_filter
 from pyvisa.constants import InterfaceType
 
 #测试
@@ -262,7 +262,7 @@ class peakWorker(QThread):
         self.perx_size = 20
 
     def run(self):
-        pack_size = 4+2500*12+2+60*4+5+4 # 帧长度是变长的，但是接收的时候按定长为标准，接收不定长的帧
+        pack_size = 4+2500*8+2+60*4+5+4 # 帧长度是变长的，但是接收的时候按定长为标准，接收不定长的帧
         def process_buffer(buf):
             pos = 0
             while self.running:
@@ -324,6 +324,7 @@ class peakWorker(QThread):
                     print("Serial Error:",e)
                     continue
                 rx_buffer.extend(data)
+                # print(rx_buffer)
                 # process_temperature(rx_buffer)
                 process_buffer(rx_buffer)
 
@@ -917,12 +918,13 @@ class GraphWindow(QtWidgets.QWidget):
         self.adc = [deque(maxlen=array_size) for _ in range(4)]
         self.data = [deque(maxlen=array_size) for _ in range(4)]
         self.filts = [np.array(list()) for _ in range(4)]
+        self.ori_filts = [np.array(list()) for _ in range(4)]
         self.usdata = [list() for _ in range(4)]
 
         self.waves = [[0 for _ in range(15)] for _ in range(4)]
 
         self.plot1.addLegend()
-        self.color_list = ['yellow','green','blue','purple']
+        self.color_list = ['yellow','#F57171','#8BFA7A','#8FC0FF']
         self.curve1 = self.plot1.plot(pen=self.color_list[0], name='CH0')
         self.curve2 = self.plot1.plot(pen=self.color_list[1], name='CH1')
         self.curve3 = self.plot1.plot(pen=self.color_list[2], name='CH2')
@@ -1033,7 +1035,12 @@ class GraphWindow(QtWidgets.QWidget):
 
         self.initials_length = 15
         self.peak_interval = 30
-        self.peak_threshold = 0.1
+        self.peak_threshold = 0.15
+
+        self.start_wave_index = 0
+        self.end_wave_index = len(self.wave_const)
+
+        self.filter_nor = 1
 
         # 控制是否显示点（filter_visual 和 update_us_point）
         self.show_points = False
@@ -1247,6 +1254,26 @@ class GraphWindow(QtWidgets.QWidget):
         except Exception as e:
             print("Serial send diff indices error:", e)
 
+    def send_wave_range(self):
+        if not ser.is_open:
+            return
+
+        command_frame = bytearray(tx_size)
+        command_frame[0] = 0xFF
+        command_frame[1] = 0xFF
+        command_frame[2] = 0x01
+        command_frame[3] = 0x05
+
+        command_frame[4] = (self.start_wave_index >> 8) & 0xFF
+        command_frame[5] = self.start_wave_index & 0xFF
+        command_frame[6] = (self.end_wave_index >> 8) & 0xFF
+        command_frame[7] = self.end_wave_index & 0xFF
+
+        try:
+            ser.write(bytes(command_frame))
+        except Exception as e:
+            print("Serial send wave range error:", e)
+
     def log_filter_diff_indices(self, channel_points):
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1269,9 +1296,9 @@ class GraphWindow(QtWidgets.QWidget):
                 return
             raw = frames_queue.popleft()
             self.process_down = False
-            single_size = 12
+            single_size = 8
 
-            # print(len(raw))
+            # print(raw)
             if raw[0]!=0xEE and raw[1]!=0xEE:
                 print("pack head error")
                 self.process_down = True
@@ -1290,17 +1317,20 @@ class GraphWindow(QtWidgets.QWidget):
             self.usdata = [list() for _ in range(4)]
 
             com_index = 0
-            for i in range(4, array_size*12+4, single_size):
+
+            valid_data_count = self.end_wave_index - self.start_wave_index
+            # print(valid_data_count, array_size)
+            for i in range(4, array_size*8+4, single_size):
                 com_input = raw[i:i+single_size]
 
                 ch1 = (com_input[0]<<8)+com_input[1]
-                ust1 = com_input[2]
-                ch2 = (com_input[3]<<8)+com_input[4]
-                ust2 = com_input[5]
-                ch3 = (com_input[6]<<8)+com_input[7]
-                ust3 = com_input[8]
-                ch4 = (com_input[9]<<8)+com_input[10]
-                ust4 = com_input[11]
+                # ust1 = com_input[2]
+                ch2 = (com_input[2]<<8)+com_input[3]
+                # ust2 = com_input[5]
+                ch3 = (com_input[4]<<8)+com_input[5]
+                # ust3 = com_input[8]
+                ch4 = (com_input[6]<<8)+com_input[7]
+                # ust4 = com_input[11]
 
                 v1 = ch1*2.5/4095
                 v2 = ch2*2.5/4095
@@ -1319,24 +1349,24 @@ class GraphWindow(QtWidgets.QWidget):
                 self.data[2].append(ch3)
                 self.data[3].append(ch4)
 
-                if ust1 ==1:
-                    self.usdata[0].append(com_index)
-                if ust2 ==1:
-                    self.usdata[1].append(com_index)
-                if ust3 ==1:
-                    self.usdata[2].append(com_index)
-                if ust4 ==1:
-                    self.usdata[3].append(com_index)
+                # if ust1 ==1:
+                #     self.usdata[0].append(com_index)
+                # if ust2 ==1:
+                #     self.usdata[1].append(com_index)
+                # if ust3 ==1:
+                #     self.usdata[2].append(com_index)
+                # if ust4 ==1:
+                #     self.usdata[3].append(com_index)
 
                 com_index+=1
 
-            if raw[array_size*12+4]!=0xAB:
+            if raw[array_size*8+4]!=0xAB:
                 print("wave head error")
-                print(hex(raw[array_size*12+4]))
+                print(hex(raw[array_size*8+4]))
                 self.process_down = True
                 return
             self.waves = [[0 for _ in range(15)] for _ in range(4)]
-            frame_count = array_size*12+4
+            frame_count = array_size*8+4
             data_len = 0
             for i in range(0, 4):
                 frame_count += 1
@@ -1411,14 +1441,18 @@ class GraphWindow(QtWidgets.QWidget):
         x = self.wave_const
 
         # 更新曲线
-        self.filts = [self.adc_filter(_adcs, idx) for idx, _adcs in enumerate(self.adc)]
+        for idx, _adcs in enumerate(self.adc):
+            res = self.adc_filter(_adcs, idx)
+            self.ori_filts[idx] = res
+            self.filts[idx] = res * self.voltage_scalars[idx]
+
         self.filter_diff_indices = [self.find_filter_diff_indices(_adcs, filt)
-                                    for _adcs, filt in zip(self.adc, self.filts)]
+                                    for _adcs, filt in zip(self.adc, self.ori_filts)]
         self.send_filter_diff_indices()
 
         # 用python算的峰值
         for i in range(4):
-            self.waves[i] = self.calculate_peaks(self.filts[i], i)
+            self.waves[i] = self.calculate_peaks(self.ori_filts[i], i)
             # print(self.waves[i])
             # print(i)
 
@@ -1522,10 +1556,16 @@ class GraphWindow(QtWidgets.QWidget):
         adc_length = array_size
 
         initials = self.find_initial(data_vec, adc_length, adc_index)
-        # print(initials)
+
+        self.start_wave_index = initials[0]-2*self.peak_interval if initials[0]-2*self.peak_interval>=0 else 0
         
         for i in range(self.initials_length):
             if initials[i]==0:
+                if i > 0:
+                    self.end_wave_index = initials[i-1]+2*self.peak_interval \
+                        if initials[i-1]+2*self.peak_interval<len(self.wave_const) else len(self.wave_const)
+                else:
+                    self.end_wave_index = len(self.wave_const)
                 break
             start = initials[i]-self.peak_interval if initials[i]-self.peak_interval>=0 else 0
             end = initials[i]+self.peak_interval if initials[i]+self.peak_interval<adc_length else adc_length
@@ -1545,24 +1585,26 @@ class GraphWindow(QtWidgets.QWidget):
             # print(peaks_vec[i])
 
         # print(peaks_vec)
+        # print(self.start_wave_index, self.end_wave_index)
         return peaks_vec
     
     def adc_filter(self, adc_vec, channel):
         if len(adc_vec) == 0:
             return np.array([])
 
-        arr = np.asarray(adc_vec, dtype=float)*self.voltage_scalars[channel]
+        arr = np.asarray(adc_vec, dtype=float)
 
         #--------------------------#
         # 滤波
-        y = medfilt(arr, kernel_size=5)
-        # b,a = butter(4,0.08)
-        # y = filtfilt(b,a,arr)
-        y = savgol_filter(y, window_length=11, polyorder=3)
-        y = np.array(y)
+
+        if self.filter_nor:
+            y = medfilt(arr, kernel_size=5)
+            y = savgol_filter(y, window_length=11, polyorder=3)
+            y = np.array(y)
 
         # 不滤波
-        # y = np.array(adc_vec) * self.voltage_scalars[channel]
+        else:
+            y = np.array(adc_vec)
         #--------------------------#
 
         if self.show_points:
