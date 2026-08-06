@@ -40,7 +40,7 @@ void ADC_MANUAL_SPI_Init(void){
 
 uint16_t ADC_SPI_Cmd(uint16_t cmdF){
 		ADC_CS_HIGH();
-		short_delay(10);
+		short_delay(1);
 		ADC_CS_LOW();
 	
 		HAL_SPI_TransmitReceive(&hspi1, (uint8_t*)&cmdF, (uint8_t*)&adcSPI, 1, HAL_MAX_DELAY);
@@ -51,9 +51,9 @@ uint16_t ADC_SPI_Cmd(uint16_t cmdF){
 uint16_t ADC_Write_Read(uint8_t ch){
 		uint16_t frame = (0x1 << 12) | (ch << 7);
 		ADC_SPI_Cmd(frame);
-		delay_us(1);
-		ADC_SPI_Cmd(frame);
-		delay_us(1);
+		short_delay(1);
+//		ADC_SPI_Cmd(frame);
+//		short_delay(7);
 		return ADC_SPI_Cmd(frame);
 }
 

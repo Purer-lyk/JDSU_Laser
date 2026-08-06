@@ -135,7 +135,7 @@ void write_ms5614t_table(void){
 	  int j;
 		uint8_t Head = 0xFF;
 	
-		memset(txBuffer, 0, PACK_SIZE*sizeof(uint8_t));
+//		memset(txBuffer, 0, PACK_SIZE*sizeof(uint8_t));
 		txBuffer[0] = 0xEE;
 		txBuffer[1] = 0xEE;
 		txCount = 4;
@@ -193,10 +193,10 @@ void write_ms5614t_table(void){
 				
 //				M1820Z_GetTmp();
 				
-				adc1[i] = uADCOriginvalues[0];
-				adc2[i] = uADCOriginvalues[1];
-				adc3[i] = uADCOriginvalues[2];
-				adc4[i] = uADCOriginvalues[3];
+//				adc1[i] = uADCOriginvalues[0];
+//				adc2[i] = uADCOriginvalues[1];
+//				adc3[i] = uADCOriginvalues[2];
+//				adc4[i] = uADCOriginvalues[3];
 				
 				//delay_us(1);
 		}
@@ -262,6 +262,29 @@ void modify_table_loop(void){
 		// 0x02 switch workState
 		else if(aRxBuffer[3] == 0x02){
 				workState = aRxBuffer[8];
+				switch(workState)
+				{
+					case TABLE_STATE:
+					{
+						LED_MANUAL_LOW();
+						LED_TABLE_HIGH();
+						break;
+					}
+					case MANUAL_STATE:
+					{
+						LED_TABLE_LOW();
+						LED_MANUAL_HIGH();
+						memset(unstableFlags, 0, sizeof(unstableFlags));
+						break;
+					}
+					case EXTRA_STATE:
+					{
+						LED_TABLE_HIGH();
+						LED_MANUAL_HIGH();
+						memset(unstableFlags, 0, sizeof(unstableFlags));
+						break;
+					}
+				}
 		}
 		else if(aRxBuffer[3] == 0x03){
 				dacTarget = aRxBuffer[8];
@@ -335,7 +358,7 @@ void sampleVoltage(void){
 }
 
 void sampleVoltageStable(uint16_t i){
-		delay_us(wave_time);
+//		delay_us(wave_time);
 		uint8_t adc_idx=0;
 		//uint8_t unstable_flag = 0;
 		for(;adc_idx<4;adc_idx++){
@@ -347,7 +370,7 @@ void sampleVoltageStable(uint16_t i){
 				delay_us(wave_time*unstableFlags[i][adc_idx]*50);
 				adcData = ADC_Write_Read(adc_idx) & 0x0FFF;
 			
-				uADCOriginvalues[adc_idx] = adcData;
+//				uADCOriginvalues[adc_idx] = adcData;
 			
 				txBuffer[txCount++] = (adcData >> 8) & 0xFF;
 				txBuffer[txCount++] = adcData & 0xFF;
@@ -382,7 +405,7 @@ void sendTxBuffer(int dac_size, int p1, int p2, int p3, int p4){
 		if(txCount!=floating_size) return;
 		
 		dma_transfer_complete = 0;
-		HAL_UART_Transmit_DMA(&huart1, txBuffer, floating_size);
+		CDC_Transmit_FS(txBuffer, floating_size);
 }
 
 void ClearTxBuff(){
@@ -410,7 +433,7 @@ void checkTemp(uint8_t mode){
 		aTxBuffer[6] = (tempDec>>8) & 0xFF;
 		aTxBuffer[7] = tempDec & 0xFF; 
 	
-		USART_Queue_Send(aTxBuffer, USART_TX_SIZE);
+		USB_Queue_Send(aTxBuffer, USART_TX_SIZE);
 		ClearTxBuff();
 }
 
@@ -454,7 +477,7 @@ void scanWave_U(void){
 		aTxBuffer[txIdx++] = (adcData) & 0xFF;
 		aTxBuffer[txIdx++] = sa;
 		
-		USART_Queue_Send(aTxBuffer, USART_TX_SIZE);
+		USB_Queue_Send(aTxBuffer, USART_TX_SIZE);
 		ClearRxBuff();
 		ClearTxBuff();
 }
@@ -490,7 +513,7 @@ void scanWave_I(void){
 		aTxBuffer[txIdx++] = (adcData) & 0xFF;
 		aTxBuffer[txIdx++] = sa;
 		
-		USART_Queue_Send(aTxBuffer, USART_TX_SIZE);
+		USB_Queue_Send(aTxBuffer, USART_TX_SIZE);
 		ClearRxBuff();
 		ClearTxBuff();
 }
@@ -526,7 +549,7 @@ void singleValue_U(void){
 					case 4:MS5614T_SetCode(MS5614T_DAC_C, WriteData, MS5614T_SPEED_FAST, MS5614T_NORMAL);break;
 				}		
 		}
-		USART_Queue_Send(aTxBuffer, USART_TX_SIZE);
+		USB_Queue_Send(aTxBuffer, USART_TX_SIZE);
 		ClearRxBuff();
 		ClearTxBuff();
 }
@@ -553,7 +576,7 @@ void singleValue_I(void){
 					case 4:PI11210_SetCode(IDAC7, WriteData);break;//WAVEB
 				}			
 		}
-		USART_Queue_Send(aTxBuffer, USART_TX_SIZE);
+		USB_Queue_Send(aTxBuffer, USART_TX_SIZE);
 		
 		ClearRxBuff();
 		ClearTxBuff();
@@ -589,6 +612,6 @@ void checkRT(void){
 		aTxBuffer[txIdx++] = (adcData >> 8) & 0xFF;
 		aTxBuffer[txIdx++] = (adcData) & 0xFF;
 		
-		USART_Queue_Send(aTxBuffer, USART_TX_SIZE);
+		USB_Queue_Send(aTxBuffer, USART_TX_SIZE);
 		ClearTxBuff();
 }

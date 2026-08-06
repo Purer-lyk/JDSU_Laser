@@ -28,7 +28,7 @@ from collections import deque
 from queue import Queue
 from queue import Empty
 
-from scipy.signal import medfilt, savgol_filter
+from scipy.signal import filtfilt, medfilt, savgol_filter, butter
 from pyvisa.constants import InterfaceType
 
 #测试
@@ -610,9 +610,13 @@ class MainWindow(QMainWindow):
         listp = list_ports.comports()
         for p in listp:
             self.ports.append([p.device, p.description])
-        target_cp = "CH343"
-        self.port = next((p.device for p in listp if target_cp in p.description), 
-                        listp[0].device if listp else None)
+        target_cps = ["CH343","Virtual COM Port"]
+        self.port = next(
+            (
+                p.device for p in listp if any(target in (p.description or "") for target in target_cps)
+            ), 
+            listp[0].device if listp else None
+        )
         self.port_act = None
 
         self.MCU_mode = 2
@@ -822,10 +826,10 @@ class GraphWindow(QtWidgets.QWidget):
         self.ctrl_panel.setLayout(self.ctrl_layout)
         self.ctrl_panel.setMaximumHeight(80)
 
-        lab_interval = QtWidgets.QLabel("单数据间隔(us):")
-        self.interval_text = QtWidgets.QLineEdit("1")
-        self.interval_text.setMinimumWidth(100)
-        self.interval_text.setMaximumHeight(25)
+        self.fps_label = QtWidgets.QLabel("FPS: 0.0")
+        self.fps_label.setMinimumWidth(100)
+        self.fps_label.setMaximumHeight(25)
+        self.fps_label.setAlignment(QtCore.Qt.AlignCenter)
 
         self.dac_label = QtWidgets.QLabel("DAC: U_DAC")
         self.dac_label.setMinimumWidth(100)
@@ -841,7 +845,7 @@ class GraphWindow(QtWidgets.QWidget):
         self.temperature = 0
 
         diff_threshold_label = QtWidgets.QLabel("滤波差异阈值:")
-        self.diff_threshold_text = QtWidgets.QLineEdit("0.2")
+        self.diff_threshold_text = QtWidgets.QLineEdit("0.1")
         self.diff_threshold_text.setMinimumWidth(100)
         self.diff_threshold_text.setMaximumHeight(25)
         self.diff_threshold_text.textChanged.connect(self.on_threshold_changed)
@@ -862,7 +866,14 @@ class GraphWindow(QtWidgets.QWidget):
         # 点显示切换（显示/不显示 filter_visual 与 update_us_point 绘制的点）
         self.points_toggle = QtWidgets.QRadioButton("显示点")
         self.points_toggle.setChecked(False)
+        self.points_toggle.setAutoExclusive(False)
         self.points_toggle.toggled.connect(self.on_toggle_points)
+
+        # 滤波开关（控制 self.filter_nor）
+        self.filter_toggle = QtWidgets.QRadioButton("滤波")
+        self.filter_toggle.setChecked(False)
+        self.filter_toggle.setAutoExclusive(False)
+        self.filter_toggle.toggled.connect(self.on_toggle_filter)
 
         self.com_btn = QtWidgets.QPushButton("打开")
         self.com_btn.setMinimumWidth(100)
@@ -871,11 +882,9 @@ class GraphWindow(QtWidgets.QWidget):
         self.clear_btn.setMinimumWidth(100)
 
         self.com_btn.clicked.connect(self.on_open_changed)
-        self.interval_text.textChanged.connect(self.on_interval_changed)
         self.clear_btn.clicked.connect(self.on_clear_chart)
 
-        self.ctrl_layout.addWidget(lab_interval)
-        self.ctrl_layout.addWidget(self.interval_text)
+        self.ctrl_layout.addWidget(self.fps_label)
         self.ctrl_layout.addSpacing(20)
         self.ctrl_layout.addStretch()
 
@@ -900,6 +909,7 @@ class GraphWindow(QtWidgets.QWidget):
         self.ctrl_layout.addStretch()
         
         self.ctrl_layout.addWidget(self.points_toggle)
+        self.ctrl_layout.addWidget(self.filter_toggle)
         self.ctrl_layout.addSpacing(10)
         self.ctrl_layout.addStretch()
 
@@ -983,7 +993,6 @@ class GraphWindow(QtWidgets.QWidget):
 
         layout.addWidget(self.num_panel, 2, 0, 1, 2)
 
-        self.interval = int(self.interval_text.text())
         self.filter_diff_threshold = float(self.diff_threshold_text.text())
         self.filter_diff_indices = [[] for _ in range(4)]
         # self.diff_send_interval = 50
@@ -995,11 +1004,16 @@ class GraphWindow(QtWidgets.QWidget):
         self.worker.temp_signal.connect(self.update_temp)
         # self.worker.start()
         
-        self.frame_timer = QtCore.QTimer()    
+        self.frame_timer = QtCore.QTimer()
         self.frame_timer.timeout.connect(self.process_frame)
-        
-        self.update_timer = QtCore.QTimer()    
+
+        self.update_timer = QtCore.QTimer()
         self.update_timer.timeout.connect(self.update_plot)
+
+        # FPS 统计：在 process_frame 中每成功处理一帧 +1，fps_timer 每秒结算并重置
+        self.fps_frame_count = 0
+        self.fps_timer = QtCore.QTimer()
+        self.fps_timer.timeout.connect(self._refresh_fps)
 
         self.set_dac_label(dac_type)
 
@@ -1034,13 +1048,13 @@ class GraphWindow(QtWidgets.QWidget):
         )
 
         self.initials_length = 15
-        self.peak_interval = 30
-        self.peak_threshold = 0.15
+        self.peak_interval = 3
+        self.peak_threshold = 0.10
 
         self.start_wave_index = 0
         self.end_wave_index = len(self.wave_const)
 
-        self.filter_nor = 1
+        self.filter_nor = 0
 
         # 控制是否显示点（filter_visual 和 update_us_point）
         self.show_points = False
@@ -1116,14 +1130,15 @@ class GraphWindow(QtWidgets.QWidget):
             
             switch_mode_enable = False
             self.clear_btn.setEnabled(False)
-            self.on_interval_changed()
 
             self.worker = peakWorker()
             self.worker.temp_signal.connect(self.update_temp)
             self.worker.start()
 
-            self.frame_timer.start(5)
-            self.update_timer.start(40)
+            self.frame_timer.start(2)
+            self.update_timer.start(10)
+            self.fps_frame_count = 0
+            self.fps_timer.start(1000)
 
             self.com_btn.setText("关闭")
         elif do_close:
@@ -1142,6 +1157,7 @@ class GraphWindow(QtWidgets.QWidget):
 
             self.frame_timer.stop()
             self.update_timer.stop()
+            self.fps_timer.stop()
 
             # self.worker.quit()
             self.worker.wait()
@@ -1165,39 +1181,19 @@ class GraphWindow(QtWidgets.QWidget):
             for label in self.num_labels[idx]:
                 label.setText("0")
         self.temperature_text.setText("0")
-
-    def on_interval_changed(self):
-        self.interval = int(self.interval_text.text())
-        command_frame = bytearray(tx_size)
-        command_frame[0] = 0xFF
-        command_frame[1] = 0xFF
-        command_frame[2] = 0x01
-        command_frame[3] = 0x01
-        command_frame[7] = (self.interval>>24) & 0xFF
-        command_frame[8] = (self.interval>>16) & 0xFF
-        command_frame[9] = (self.interval>>8) & 0xFF
-        command_frame[10] = self.interval & 0xFF
-
-        if not ser.is_open:
-            try:
-                self.com_btn.setEnabled(False)
-                ser.open()
-                ser.write(bytes(command_frame))
-                ser.close()
-                self.com_btn.setEnabled(True)
-                QMessageBox.information(self, "提示", "间隔已生效")
-            except Exception as e:
-                QMessageBox.information(self, "提示", "改间隔前确保串口端口和波特率选对")
-                QMessageBox.information(self, "警告", f"发生异常:\n{str(e)}")
-                return
-        else:
-            ser.write(bytes(command_frame))
+        self.fps_frame_count = 0
+        self.fps_label.setText("FPS: 0.0")
 
     def on_threshold_changed(self):
         try:
             self.filter_diff_threshold = float(self.diff_threshold_text.text())
         except Exception:
             pass
+
+    def _refresh_fps(self):
+        # 1 秒窗口内成功处理的帧数 = FPS
+        self.fps_label.setText(f"FPS: {self.fps_frame_count:.1f}")
+        self.fps_frame_count = 0
 
     def on_scalar_channel_changed(self, index):
         try:
@@ -1296,6 +1292,7 @@ class GraphWindow(QtWidgets.QWidget):
                 return
             raw = frames_queue.popleft()
             self.process_down = False
+            self.fps_frame_count += 1
             single_size = 8
 
             # print(raw)
@@ -1596,12 +1593,10 @@ class GraphWindow(QtWidgets.QWidget):
 
         #--------------------------#
         # 滤波
-
         if self.filter_nor:
-            y = medfilt(arr, kernel_size=5)
-            y = savgol_filter(y, window_length=11, polyorder=3)
+            y = medfilt(arr, kernel_size=3)
+            y = savgol_filter(y, window_length=3, polyorder=2)
             y = np.array(y)
-
         # 不滤波
         else:
             y = np.array(adc_vec)
@@ -1624,6 +1619,10 @@ class GraphWindow(QtWidgets.QWidget):
 
         self.filter_scatter_items[channel].setData(x=x_data, y=y_data)
         self.filter_scatter_items[channel].setVisible(self.show_points and bool(x_data))
+
+    def on_toggle_filter(self, checked):
+        self.filter_nor = 1 if checked else 0
+        self.update_plot()
 
     def on_toggle_points(self, checked):
         self.show_points = checked
@@ -2270,6 +2269,26 @@ class KalmanFilter1D:
         self.P = (1 - K) * P_pred
 
         return self.x
+    
+def hampel_filter(x, window_size=3, n_sigma=3):
+    x = np.asarray(x).copy()
+    n = len(x)
+
+    for i in range(window_size, n - window_size):
+        window = x[i-window_size:i+window_size+1]
+
+        med = np.median(window)
+        mad = np.median(np.abs(window - med))
+
+        if mad == 0:
+            continue
+
+        threshold = n_sigma * 1.4826 * mad
+
+        if abs(x[i] - med) > threshold:
+            x[i] = med
+
+    return x
 
 if __name__=="__main__":
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)

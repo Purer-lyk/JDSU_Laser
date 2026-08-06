@@ -25,10 +25,10 @@ uint8_t M1820Z_Reset(void){
 
     DQ_OUT();
     HAL_GPIO_WritePin(TEMP_PORT, TEMP_PIN, GPIO_PIN_RESET);
-    delay_us(600); // 480us+
+    delay_us(500); // 480us+
 
     HAL_GPIO_WritePin(TEMP_PORT, TEMP_PIN, GPIO_PIN_SET);
-		delay_us(600);
+		delay_us(500);
 	
 //    DQ_IN();
 
@@ -102,7 +102,7 @@ float M1820Z_GetTmp(void){
     M1820Z_WriteByte(0xCC);
     M1820Z_WriteByte(0x44);
 
-    delay_ms(20);
+    delay_ms(5);
 //		HAL_GPIO_WritePin(TEMP_PORT, TEMP_PIN, GPIO_PIN_SET);
 //		while(M1820Z_ReadBit()==0){delay_us(2);}
 

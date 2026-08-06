@@ -425,14 +425,14 @@
               <FilePath>..\Core\Src\wave_const.c</FilePath>
             </File>
             <File>
-              <FileName>usart.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\Core\Src\usart.c</FilePath>
-            </File>
-            <File>
               <FileName>temperature.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Core\Src\temperature.c</FilePath>
+            </File>
+            <File>
+              <FileName>com.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\com.c</FilePath>
             </File>
             <File>
               <FileName>main.c</FileName>

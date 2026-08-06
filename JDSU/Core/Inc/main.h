@@ -37,7 +37,7 @@ extern "C" {
 #include "peak_detection.h"
 #include "stm32f2xx_it.h"
 #include "adc.h"
-#include "usart.h"
+#include "com.h"
 #include "temperature.h"
 #include "stdlib.h"
 #include <stdio.h>
@@ -114,8 +114,14 @@ extern SPI_HandleTypeDef hspi1;
 extern SPI_HandleTypeDef hspi2;
 extern SPI_HandleTypeDef hspi3;
 
+extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart6;
+extern DMA_HandleTypeDef hdma_uart4_rx;
 extern DMA_HandleTypeDef hdma_usart1_tx;
+extern DMA_HandleTypeDef hdma_usart1_rx;
+extern DMA_HandleTypeDef hdma_usart6_tx;
+extern DMA_HandleTypeDef hdma_usart6_rx;
 
 extern const uint16_t Wave_DAC[Number][5];
 extern const uint16_t Wave_DATA[Number][2];

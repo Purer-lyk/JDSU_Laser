@@ -51,9 +51,15 @@ SPI_HandleTypeDef hspi3;
 TIM_HandleTypeDef htim1;
 DMA_HandleTypeDef hdma_tim1_up;
 
+UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart6;
+DMA_HandleTypeDef hdma_uart4_rx;
+DMA_HandleTypeDef hdma_uart4_tx;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
+DMA_HandleTypeDef hdma_usart6_tx;
+DMA_HandleTypeDef hdma_usart6_rx;
 
 /* USER CODE BEGIN PV */
 uint8_t test = 0x21;
@@ -75,12 +81,15 @@ static void MX_SPI1_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_USART6_UART_Init(void);
+static void MX_UART4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+extern USBD_HandleTypeDef hUsbDeviceFS;
 
 /* USER CODE END 0 */
 
@@ -108,7 +117,7 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+	
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -121,11 +130,16 @@ int main(void)
   MX_TIM1_Init();
   MX_I2C1_Init();
   MX_USB_DEVICE_Init();
+  MX_USART6_UART_Init();
+  MX_UART4_Init();
   /* USER CODE BEGIN 2 */
 	ADC_MANUAL_SPI_Init();
+	
 	aTxBuffer[0] = 0xFF;
 	aTxBuffer[1] = 0xFF;
 	HAL_UART_Receive_DMA(&huart1, uartFrame, USART_RX_SIZE);
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart6, atFrame, AT_RX_SIZE);
+	__HAL_DMA_DISABLE_IT(&hdma_usart6_rx, DMA_IT_HT);
 	
 	Set_Soft_PWM_Duty(25);
 	__HAL_TIM_ENABLE_DMA(&htim1, TIM_DMA_UPDATE);
@@ -137,47 +151,55 @@ int main(void)
 	HAL_GPIO_WritePin(CHOISE_1_A_PORT, CHOISE_1_A_PIN, (GPIO_PinState)CHOISE_1_A);
 	HAL_GPIO_WritePin(CHOISE_1_B_PORT, CHOISE_1_B_PIN, (GPIO_PinState)CHOISE_1_B);
 
-//	USB_ENABLE;
-	UART_ENABLE;
+	USB_ENABLE;
+//	UART_ENABLE;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+	uint8_t cmd[] = "AT+WJAP=HUAWEI-10ES6Z,dong@#304\r\n";
+	uint8_t check[] = "AT+STAINFO?\r\n";
+	if(at_transfer_complete){
+		at_transfer_complete = 0;
+		
+		HAL_UART_Transmit_DMA(&huart6,
+													cmd,
+													sizeof(cmd)-1);
+	}
+	
   while (1)
   {
-//		workState = MANUAL_STATE;
+		USB_ENABLE;
+		//workState = MANUAL_STATE;
 		
 		switch(workState)
 		{
 			case TABLE_STATE:
 			{
-				LED_MANUAL_LOW();
-				LED_TABLE_HIGH();
 				write_ms5614t_table();
 				break;
 			}
 			case MANUAL_STATE:
 			{
-				LED_TABLE_LOW();
-				LED_MANUAL_HIGH();
 				write_ms5614t_manual();
-				memset(unstableFlags, 0, sizeof(unstableFlags));
 				break;
 			}
 			case EXTRA_STATE:
 			{
-				LED_TABLE_HIGH();
-				LED_MANUAL_HIGH();
 				write_ms5614t_extra();
-				memset(unstableFlags, 0, sizeof(unstableFlags));
 				break;
 			}
 		}
-
-//		CDC_Transmit_FS(txBuffer, PACK_SIZE);
-//		HAL_UART_Transmit_DMA(&huart1, txBuffer, PACK_SIZE);
-		
-//		delay_ms(10);
+			
+//			if(at_transfer_complete){
+//				at_transfer_complete = 0;
+//				
+//				HAL_UART_Transmit_DMA(&huart6,
+//															check,
+//															sizeof(check)-1);
+//			}
+//			
+//			delay_ms(1000);
 
     /* USER CODE END WHILE */
 
@@ -421,6 +443,39 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief UART4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART4_Init(void)
+{
+
+  /* USER CODE BEGIN UART4_Init 0 */
+
+  /* USER CODE END UART4_Init 0 */
+
+  /* USER CODE BEGIN UART4_Init 1 */
+
+  /* USER CODE END UART4_Init 1 */
+  huart4.Instance = UART4;
+  huart4.Init.BaudRate = 115200;
+  huart4.Init.WordLength = UART_WORDLENGTH_8B;
+  huart4.Init.StopBits = UART_STOPBITS_1;
+  huart4.Init.Parity = UART_PARITY_NONE;
+  huart4.Init.Mode = UART_MODE_TX_RX;
+  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart4.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN UART4_Init 2 */
+
+  /* USER CODE END UART4_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -454,6 +509,39 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
+  * @brief USART6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART6_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART6_Init 0 */
+
+  /* USER CODE END USART6_Init 0 */
+
+  /* USER CODE BEGIN USART6_Init 1 */
+
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 115200;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_TX_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART6_Init 2 */
+
+  /* USER CODE END USART6_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -461,14 +549,27 @@ static void MX_DMA_Init(void)
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA2_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
+  /* DMA1_Stream4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
   /* DMA2_Stream2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
   /* DMA2_Stream5_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
+  /* DMA2_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);
   /* DMA2_Stream7_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
